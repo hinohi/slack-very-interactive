@@ -12,7 +12,7 @@ def add(x, y):
 
 
 @app.route('/sub/<int:x>/<int:y>')
-def add(x, y):
+def sub(x, y):
     resp = TaskRequest('sub')(x, y)
     return jsonify(result=resp)
 
