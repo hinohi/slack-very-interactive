@@ -1,0 +1,4 @@
+sqlalchemy
+celery[sqlalchemy]
+flask
+gunicorn
