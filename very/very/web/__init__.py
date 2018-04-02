@@ -1,6 +1,5 @@
 from flask import Flask
 
-from very.very import tasks
 from . import hello
 from . import simple
 

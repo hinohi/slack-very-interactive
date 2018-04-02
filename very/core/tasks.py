@@ -1,28 +1,33 @@
+from logging import getLogger
+
 from celery import Celery
 
-NAME = 'very'
+_logger = getLogger(__name__)
 
-celery = Celery(
-    NAME,
-    broker='sqla+sqlite:///celery_broker.sqlite',
-    backend='db+sqlite:///celery_backend.sqlite',
-)
+celery = Celery(__name__)
 
 
 def task(name, **kwargs):
     def wrapper(func):
-        return celery.task(name=f'{NAME}.{name}', **kwargs)(func)
+        _logger.info('register task: name=%s option=%s', name, kwargs)
+        return celery.task(name=name, **kwargs)(func)
     return wrapper
 
 
 class TaskRequest:
 
     def __init__(self, name, **options):
-        self._task = celery.tasks[f'{NAME}.{name}']
-        self._options = options
+        self.name = name
+        self.options = options
 
     def __call__(self, *args, **kwargs):
-        return self._task.apply_async(args, kwargs, **self._options).get()
+        return celery.send_task(self.name,
+                                args=args,
+                                kwargs=kwargs,
+                                **self.options).get()
 
     def async(self, *args, **kwargs):
-        return self._task.apply_async(args, kwargs, **self._options)
+        return celery.send_task(self.name,
+                                args=args,
+                                kwargs=kwargs,
+                                **self.options)
