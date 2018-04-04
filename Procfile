@@ -1,2 +1,2 @@
 web: gunicorn very.very.web:web --log-file=-
-worker: celery -A very.very.tasks worker
+worker: celery worker --config=very.very.conf --loglevel=info
