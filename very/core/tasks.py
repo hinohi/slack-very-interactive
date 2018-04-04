@@ -7,10 +7,24 @@ _logger = getLogger(__name__)
 celery = Celery(__name__)
 
 
-def task(name, **kwargs):
+def task(name, **options):
     def wrapper(func):
-        _logger.info('register task: name=%s option=%s', name, kwargs)
-        return celery.task(name=name, **kwargs)(func)
+        from functools import wraps
+
+        _logger.info('register task: name=%s options=%s', name, options)
+
+        @wraps(func)
+        def inner(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                import traceback
+                _logger.error("unbounded error occur calling: %s\n%s",
+                              e, traceback.format_exc())
+                return traceback.extract_stack()
+
+        return celery.task(name=name, **options)(inner)
+
     return wrapper
 
 
