@@ -1,4 +1,4 @@
 sqlalchemy
-celery[sqlalchemy]
+celery[sqlalchemy,redis]
 flask
 gunicorn
