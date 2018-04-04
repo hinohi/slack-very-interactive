@@ -19,9 +19,16 @@ def task(name, **options):
                 return func(*args, **kwargs)
             except Exception as e:
                 import traceback
+                res = {
+                    'error': str(e),
+                    'traceback': [
+                        [l[0], l[1], l[2], l[3]]
+                        for l in traceback.extract_stack()
+                    ]
+                }
                 _logger.error("unbounded error occur calling: %s\n%s",
                               e, traceback.format_exc())
-                return traceback.extract_stack()
+                return res
 
         return celery.task(name=name, **options)(inner)
 
