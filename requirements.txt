@@ -2,3 +2,6 @@ sqlalchemy
 celery[sqlalchemy,redis]
 flask
 gunicorn
+slacker
+websocket_client
+requests

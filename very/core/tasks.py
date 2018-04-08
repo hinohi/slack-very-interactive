@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from logging import getLogger
 
 from celery import Celery
@@ -26,7 +27,7 @@ def task(name, **options):
                         for l in traceback.extract_stack()
                     ]
                 }
-                _logger.error("unbounded error occur calling: %s\n%s",
+                _logger.error('unbounded error occur calling: %s\n%s',
                               e, traceback.format_exc())
                 return res
 
@@ -52,3 +53,9 @@ class TaskRequest:
                                 args=args,
                                 kwargs=kwargs,
                                 **self.options)
+
+
+class TaskResponseBase:
+
+    def __init__(self, data=None):
+        self.data = data
