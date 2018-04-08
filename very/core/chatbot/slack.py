@@ -6,6 +6,9 @@ import json
 from collections import deque
 from contextlib import contextmanager
 
+import requests
+import slacker
+
 from .base import *
 
 
@@ -75,25 +78,24 @@ class SlackClient(ChatClientBase):
 
     @contextmanager
     def session(self):
-        import requests
-        import slacker
-
         with requests.Session() as session:
             yield slacker.Slacker(self.token, session=session)
 
 
 class SlackHandler(MessageHandlerBase):
 
-    def __init__(self, conf, client):
+    def __init__(self, conf, client, bot):
         super().__init__(conf, client)
         self._handlers = {}
         self._matcher = []
+        self._bot = bot
 
     def register_event_handler(self, type_, handler, block_main_loop=False):
         self._handlers[type_] = (handler, block_main_loop)
 
     def register_message_matcher(self, matcher, handler):
         self._matcher.append((matcher, handler))
+        print(self, self._matcher)
 
     def handle(self, event):
         type_ = event['type']
@@ -104,7 +106,18 @@ class SlackHandler(MessageHandlerBase):
             handler(event)
 
     def handle_message(self, event):
-        pass
+        print(self, self._matcher)
+        _logger.warning(json.dumps(event, ensure_ascii=False))
+        text = event['text']
+        matched = False
+        for matcher, handler in self._matcher:
+            m = matcher.match(text)
+            if m is not None:
+                matched = True
+                _logger.warning('matched: %s', str(m.origin))
+                handler(*m.args, **m.kwargs)
+        if not matched:
+            _logger.warning('through message: %s', text)
 
 
 class SlackBot:
@@ -119,7 +132,7 @@ class SlackBot:
         self.channels = {}
 
         self.client = SlackClient(self.conf)
-        self.handler = SlackHandler(self.conf, self.client)
+        self.handler = SlackHandler(self.conf, self.client, self)
         self.register_handler()
 
     def register_handler(self):
@@ -132,11 +145,22 @@ class SlackBot:
             self.handler.register_event_handler(type_, self.handler_users, True)
 
     def handle_login(self, event):
+        import importlib
+
         self.login_data = event['data']
         self.users = {u['id']: u for u in self.login_data['users']}
         self.channels = {}
         for key in ['channels', 'groups', 'ims']:
             self.channels.update({c['id']: c for c in self.login_data[key]})
+
+        for name in getattr(self.conf, 'SLACK_BOT_MODULES'):
+            try:
+                _logger.info('try import %s', name)
+                importlib.import_module(name)
+            except ImportError:
+                _logger.error('cannot import %s', name)
+            except Exception as e:
+                _logger.exception('cannot import %s: %s', name, e)
 
     def handle_channels(self, event):
         self.channels[event['channel']['id']] = event['channel']
@@ -146,3 +170,27 @@ class SlackBot:
 
     def run(self):
         self.handler.loop()
+
+    def post(self, channel, message, attachments=None):
+        with self.client.session() as s:
+            s.chat.post_message(
+                channel,
+                message,
+                username=self.login_data['self']['name'],
+                icon_url=self.bot_icon,
+                icon_emoji=self.bot_emoji,
+                as_user=True,
+                attachments=attachments,
+            )
+
+    def listen_to(self, pattern, flag=0):
+        from .matcher import Matcher, RegexTokenizer
+
+        def wrapper(func):
+            _logger.warning('register matcher: %s %s', pattern, func)
+            m = Matcher([RegexTokenizer(pattern, flag)])
+            self.handler.register_message_matcher(m, func)
+        return wrapper
+
+    def respond_to(self, pattern, flag=0):
+        pass

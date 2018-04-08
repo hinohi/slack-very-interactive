@@ -11,3 +11,7 @@ CELERY_IMPORTS = (
     'very.very.tasks.simple',
     'very.very.tasks.db',
 )
+
+SLACK_BOT_MODULES = (
+    'very.very.slackbot.simple',
+)

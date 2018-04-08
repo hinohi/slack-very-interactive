@@ -14,6 +14,12 @@ class TokenBase:
     def __str__(self):
         return self.string
 
+    def as_args(self):
+        return [self.string]
+
+    def as_kwargs(self):
+        return {}
+
 
 class RawToken(TokenBase):
     pass
@@ -26,6 +32,14 @@ class RegexToken(RawToken):
         super().__init__(match.string[start:end])
         self.match = match
 
+    def as_args(self):
+        if self.match.groupdict():
+            return []
+        return self.match.groups()
+
+    def as_kwargs(self):
+        return self.match.groupdict()
+
 
 class ProperNounToken(RawToken):
 
@@ -36,12 +50,21 @@ class ProperNounToken(RawToken):
     def __str__(self):
         return self.normalize
 
+    def as_args(self):
+        return []
+
+    def as_kwargs(self):
+        return {self.normalize: self.string}
+
 
 class DateToken(TokenBase):
 
     def __init__(self, date: datetime.date, string: str):
         super().__init__(string)
         self.date = date
+
+    def as_args(self):
+        return [self.date]
 
 
 class TokenizerBase:
@@ -58,7 +81,7 @@ class RegexTokenizer(TokenizerBase):
 
     def match(self, string: str):
         m = self.re.search(string)
-        if not m:
+        if m is not None:
             return RegexToken(m), m.start()
 
 
@@ -168,3 +191,33 @@ class DateTokenizer(TokenizerBase):
                 tokens.append(res)
         if tokens:
             return max(tokens, key=lambda x: len(x[0]))
+
+
+class Matcher:
+
+    def __init__(self, tokenizer_list):
+        self.tokenizer_list = tokenizer_list
+
+    def match(self, string: str):
+        origin = string
+        args = []
+        kwargs = {}
+        for tokenizer in self.tokenizer_list:
+            res = tokenizer.match(string)
+            if res is None:
+                return
+            t, start = res
+            if string[:start].strip():
+                return
+            string = string[start + len(t):]
+            args.extend(t.as_args())
+            kwargs.update(t.as_kwargs())
+        return MatchResult(origin, args, kwargs)
+
+
+class MatchResult:
+
+    def __init__(self, origin: str, args, kwargs):
+        self.origin = origin
+        self.args = args
+        self.kwargs = kwargs
