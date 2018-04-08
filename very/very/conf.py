@@ -9,4 +9,5 @@ if _redis_url:
 
 CELERY_IMPORTS = (
     'very.very.tasks.simple',
+    'very.very.tasks.db',
 )
