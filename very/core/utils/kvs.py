@@ -4,7 +4,7 @@ from functools import lru_cache
 import redis
 
 
-@lru_cache
+@lru_cache()
 def _kvs() -> redis.StrictRedis:
     from very.core import current_conf
 
@@ -31,8 +31,8 @@ def get(key, as_pickle=True):
 
 
 def incr(key, amount=1):
-    _kvs().incr(key, amount)
+    return _kvs().incr(key, amount)
 
 
 def decr(key, amount=1):
-    _kvs().decr(key, amount)
+    return _kvs().decr(key, amount)
