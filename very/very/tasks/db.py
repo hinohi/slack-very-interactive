@@ -41,9 +41,9 @@ def session_wrapper(func):
     return wrapper
 
 
-@task('kvs.get')
+@task('db.kvs.get')
 @session_wrapper
-def get_kvs(kvs_id):
+def get_db_kvs(kvs_id):
     from very.very.model import session
     kv = session.query(KVS).get(kvs_id)
     if kv is None:
@@ -51,27 +51,27 @@ def get_kvs(kvs_id):
     return kv.export_dict()
 
 
-@task('kvs.get_by_key')
+@task('db.kvs.get_by_key')
 @session_wrapper
-def get_kvs_by_key(key):
+def get_db_kvs_by_key(key):
     from very.very.model import session
     kv_list = session.query(KVS).filter(KVS.key == key).all()
     return [kv.export_dict() for kv in kv_list]
 
 
-@task('kvs.create')
+@task('db.kvs.create')
 @session_wrapper
-def create_kvs(key, value):
+def create_db_kvs(key, value):
     from very.very.model import session
     kv = KVS(key=key, value=value)
     session.add(kv)
-    session.flush()
+    session.commit()
     return kv.export_dict()
 
 
-@task('kvs.delete')
+@task('db.kvs.delete')
 @session_wrapper
-def delete_kvs(kvs_id):
+def delete_db_kvs(kvs_id):
     from very.very.model import session
     kv = session.query(KVS).get(kvs_id)
     if kv is not None:

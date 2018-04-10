@@ -5,6 +5,7 @@ from ssl import SSLError
 import json
 from collections import deque
 from contextlib import contextmanager
+from typing import Optional
 
 import requests
 import slacker
@@ -82,47 +83,36 @@ class SlackClient(ChatClientBase):
             yield slacker.Slacker(self.token, session=session)
 
 
-class SlackHandler(MessageHandlerBase):
+class SlackMessage:
 
-    def __init__(self, conf, client, bot):
+    listen_message_subtypes = {
+        'message',  # default
+        'channel_topic',
+        'file_comment',
+        'group_purpose',
+        'me_message',
+        'thread_broadcast',
+    }
+
+    def __init__(self, body: dict):
+        self.body = body
+        self.subtype: str = body.get('subtype', 'message')
+        if self.subtype in self.listen_message_subtypes:
+            self.active = True
+            self.text: str = body['text']
+            self.user_id: str = body['user']
+            self.is_bot = 'bot_id' in body
+            self.channel_id: str = body['channel']
+            self.ts: str = body['ts']
+            self.thread_ts: Optional[str] = body.get('thread_ts')
+        else:
+            self.active = False
+
+
+class SlackBot(MessageHandlerBase):
+
+    def __init__(self, conf, client):
         super().__init__(conf, client)
-        self._handlers = {}
-        self._matcher = []
-        self._bot = bot
-
-    def register_event_handler(self, type_, handler, block_main_loop=False):
-        self._handlers[type_] = (handler, block_main_loop)
-
-    def register_message_matcher(self, matcher, handler):
-        self._matcher.append((matcher, handler))
-        print(self, self._matcher)
-
-    def handle(self, event):
-        type_ = event['type']
-        if type_ == 'message':
-            self.handle_message(event)
-        elif type_ in self._handlers:
-            handler, block_main_loop = self._handlers[type_]
-            handler(event)
-
-    def handle_message(self, event):
-        print(self, self._matcher)
-        _logger.warning(json.dumps(event, ensure_ascii=False))
-        text = event['text']
-        matched = False
-        for matcher, handler in self._matcher:
-            m = matcher.match(text)
-            if m is not None:
-                matched = True
-                _logger.warning('matched: %s', str(m.origin))
-                handler(*m.args, **m.kwargs)
-        if not matched:
-            _logger.warning('through message: %s', text)
-
-
-class SlackBot:
-
-    def __init__(self, conf):
         self.conf = conf
         self.bot_icon = getattr(self.conf, 'SLACK_BOT_ICON', None)
         self.bot_emoji = getattr(self.conf, 'SLACK_BOT_EMOJI', None)
@@ -131,20 +121,21 @@ class SlackBot:
         self.users = {}
         self.channels = {}
 
-        self.client = SlackClient(self.conf)
-        self.handler = SlackHandler(self.conf, self.client, self)
+        self._handlers = {}
+        self._matchers = []
         self.register_handler()
 
     def register_handler(self):
-        self.handler.register_event_handler('login', self.handle_login, True)
+        self._handlers['message'] = (self._handle_message, False)
+        self._handlers['login'] = (self._handle_login, True)
         for type_ in ['channel_created', 'channel_rename',
                       'group_joined', 'group_rename',
                       'im_created']:
-            self.handler.register_event_handler(type_, self.handle_channels, True)
+            self._handlers[type_] = (self._handle_channels, True)
         for type_ in ['team_join', 'user_change']:
-            self.handler.register_event_handler(type_, self.handler_users, True)
+            self._handlers[type_] = (self._handler_users, True)
 
-    def handle_login(self, event):
+    def _handle_login(self, event):
         import importlib
 
         self.login_data = event['data']
@@ -162,14 +153,35 @@ class SlackBot:
             except Exception as e:
                 _logger.exception('cannot import %s: %s', name, e)
 
-    def handle_channels(self, event):
+    def _handle_channels(self, event):
         self.channels[event['channel']['id']] = event['channel']
 
-    def handler_users(self, event):
+    def _handler_users(self, event):
         self.users[event['user']['id']] = event['user']
 
+    def _handle_message(self, event):
+        print(json.dumps(event, ensure_ascii=False))
+        msg = SlackMessage(event)
+        if not msg.active or msg.is_bot:
+            return
+
+        matched = False
+        for matcher, handler in self._matchers:
+            m = matcher.match(msg.text)
+            if m is not None:
+                matched = True
+                handler(*m.args, **m.kwargs)
+        if not matched:
+            _logger.warning('through message: %s', msg.text)
+
     def run(self):
-        self.handler.loop()
+        self.loop()
+
+    def handle(self, event):
+        type_ = event['type']
+        if type_ in self._handlers:
+            handler, block_main_loop = self._handlers[type_]
+            handler(event)
 
     def post(self, channel, message, attachments=None):
         with self.client.session() as s:
@@ -189,7 +201,7 @@ class SlackBot:
         def wrapper(func):
             _logger.warning('register matcher: %s %s', pattern, func)
             m = Matcher([RegexTokenizer(pattern, flag)])
-            self.handler.register_message_matcher(m, func)
+            self._matchers.append([m, func])
         return wrapper
 
     def respond_to(self, pattern, flag=0):

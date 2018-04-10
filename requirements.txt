@@ -1,3 +1,4 @@
+redis
 sqlalchemy
 celery[sqlalchemy,redis]
 flask
